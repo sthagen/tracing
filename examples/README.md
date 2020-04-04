@@ -18,6 +18,10 @@ This directory contains a collection of examples that demonstrate the use of the
     which provides a subscriber implementation that logs traces to the console.
   + `fmt-stderr`: Demonstrates overriding the output stream used by the `fmt`
     subscriber.
+  + `fmt-custom-field`: Demonstrates overriding how the `fmt` subscriber formats
+    fields on spans and events.
+  + `fmt-custom-event`: Demonstrates overriding how the `fmt` subscriber formats
+    events.
   + `subscriber-filter`: Demonstrates the `tracing-subscriber::filter` module,
     which provides a layer which adds configurable filtering to a subscriber
     implementation.
@@ -35,12 +39,6 @@ This directory contains a collection of examples that demonstrate the use of the
     simple `tower` HTTP/1.1 client.
   + `tower-server`: Demonstrates the use of `tracing-tower` to instrument a
     simple `tower` HTTP/1.1 server.
-  + `tower-h2-client`: Demonstrates the use of `tracing-tower` to instrument a
-    simple `tower-h2` HTTP/2 client (based on [this example][h2-client] from
-    `tower-h2`).
-  + `tower-h2-server`: Demonstrates the use of `tracing-tower` to instrument a
-    simple `tower-h2` HTTP/2 server (based on [this example][h2-server] from
-    `tower-h2`).
 - **tracing-serde**:
   + `serde-yak-shave`: Demonstrates the use of `tracing-serde` by implementing a
     subscriber that emits trace output as JSON.
@@ -53,5 +51,3 @@ This directory contains a collection of examples that demonstrate the use of the
 
 [tokio-proxy]: https://github.com/tokio-rs/tokio/blob/v0.1.x/tokio/examples/proxy.rs
 [echo]: https://github.com/hyperium/hyper/blob/0.12.x/examples/echo.rs
-[h2-client]: https://github.com/tower-rs/tower-h2/blob/0865040d699697bbaf1c3b77b3f256b72f98cdf4/examples/client.rs
-[h2-server]: https://github.com/tower-rs/tower-h2/blob/0865040d699697bbaf1c3b77b3f256b72f98cdf4/examples/server.rs

@@ -82,6 +82,34 @@ pub trait FormatFields<'writer> {
     ) -> fmt::Result;
 }
 
+/// Returns the default configuration for an [event formatter].
+///
+/// Methods on the returned event formatter can be used for further
+/// configuration. For example:
+///
+/// ```rust
+/// let format = tracing_subscriber::fmt::format()
+///     .without_time()         // Don't include timestamps
+///     .with_target(false)     // Don't include event targets.
+///     .with_level(false)      // Don't include event levels.
+///     .compact();             // Use a more compact, abbreviated format.
+///
+/// // Use the configured formatter when building a new subscriber.
+/// tracing_subscriber::fmt()
+///     .event_format(format)
+///     .init();
+/// ```
+pub fn format() -> Format {
+    Format::default()
+}
+
+/// Returns the default configuration for a JSON [event formatter].
+#[cfg(feature = "json")]
+#[cfg_attr(docsrs, doc(cfg(feature = "json")))]
+pub fn json() -> Format<Json> {
+    format().json()
+}
+
 /// Returns a [`FormatFields`] implementation that formats fields using the
 /// provided function or closure.
 ///
@@ -344,20 +372,31 @@ where
         #[cfg(not(feature = "ansi"))]
         time::write(&self.timer, writer)?;
 
-        let (fmt_level, fmt_ctx) = {
+        if self.display_level {
+            let fmt_level = {
+                #[cfg(feature = "ansi")]
+                {
+                    FmtLevel::new(meta.level(), self.ansi)
+                }
+                #[cfg(not(feature = "ansi"))]
+                {
+                    FmtLevel::new(meta.level())
+                }
+            };
+            write!(writer, "{} ", fmt_level)?;
+        }
+
+        let fmt_ctx = {
             #[cfg(feature = "ansi")]
             {
-                (
-                    FmtLevel::new(meta.level(), self.ansi),
-                    FmtCtx::new(&ctx, self.ansi),
-                )
+                FmtCtx::new(&ctx, self.ansi)
             }
             #[cfg(not(feature = "ansi"))]
             {
-                (FmtLevel::new(meta.level()), FmtCtx::new(&ctx))
+                FmtCtx::new(&ctx)
             }
         };
-        write!(writer, "{} {}", fmt_level, fmt_ctx)?;
+        write!(writer, "{}", fmt_ctx)?;
         if self.display_target {
             write!(writer, "{}:", meta.target())?;
         }
