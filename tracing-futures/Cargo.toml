@@ -1,6 +1,6 @@
 [package]
 name = "tracing-futures"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Eliza Weisman <eliza@buoyant.io>", "Tokio Contributors <team@tokio.rs>"]
 edition = "2018"
 repository = "https://github.com/tokio-rs/tracing"
@@ -39,7 +39,6 @@ tokio-test = "0.2"
 tracing-core = { path = "../tracing-core", version = "0.1.2" }
 
 [badges]
-azure-devops = { project = "tracing/tracing", pipeline = "tokio-rs.tracing", build = "1" }
 maintenance = { status = "actively-developed" }
 
 [package.metadata.docs.rs]
