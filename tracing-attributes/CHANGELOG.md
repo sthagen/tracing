@@ -1,3 +1,37 @@
+# 0.1.10 (August 10, 2020)
+
+### Added
+
+- Support for using `self` in field expressions when instrumenting `async-trait`
+  functions (#875)
+- Several documentation improvements (#832, #897, #911, #913)
+
+Thanks to @anton-dutov and @nightmared for contributing to this release!
+
+# 0.1.9 (July 8, 2020)
+
+### Added
+
+- Support for arbitrary expressions as fields in `#[instrument]` (#672)
+
+### Changed
+
+- `#[instrument]` now emits a compiler warning when ignoring unrecognized
+  input (#672, #786)
+
+# 0.1.8 (May 13, 2020)
+
+### Added
+
+- Support for using `#[instrument]` on methods that are part of [`async-trait`]
+  trait implementations (#711)
+- Optional `#[instrument(err)]` argument to automatically emit an event if an
+  instrumented function returns `Err` (#637) 
+
+Thanks to @ilana and @nightmared for contributing to this release!
+
+[`async-trait`]: https://crates.io/crates/async-trait
+
 # 0.1.7 (February 26, 2020)
 
 ### Added

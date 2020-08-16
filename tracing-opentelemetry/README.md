@@ -1,3 +1,7 @@
+![Tracing — Structured, application-level diagnostics][splash]
+
+[splash]: https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/splash.svg
+
 # Tracing OpenTelemetry
 
 Utilities for adding [OpenTelemetry] interoperability to [`tracing`].
@@ -13,9 +17,9 @@ Utilities for adding [OpenTelemetry] interoperability to [`tracing`].
 [Documentation][docs-url] | [Chat][discord-url]
 
 [crates-badge]: https://img.shields.io/crates/v/tracing-opentelemetry.svg
-[crates-url]: https://crates.io/crates/tracing-opentelemetry/0.3.1
+[crates-url]: https://crates.io/crates/tracing-opentelemetry/0.7.0
 [docs-badge]: https://docs.rs/tracing-opentelemetry/badge.svg
-[docs-url]: https://docs.rs/tracing-opentelemetry/0.3.1/tracing_opentelemetry
+[docs-url]: https://docs.rs/tracing-opentelemetry/0.7.0/tracing_opentelemetry
 [docs-master-badge]: https://img.shields.io/badge/docs-master-blue
 [docs-master-url]: https://tracing-rs.netlify.com/tracing_opentelemetry
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
@@ -53,7 +57,6 @@ The crate provides the following types:
 ```rust
 use opentelemetry::{api::Provider, sdk};
 use tracing::{error, span};
-use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
@@ -62,7 +65,7 @@ fn main() {
     let tracer = sdk::Provider::default().get_tracer("component_name");
 
     // Create a new OpenTelemetry tracing layer
-    let telemetry = OpenTelemetryLayer::with_tracer(tracer);
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
     let subscriber = Registry::default().with(telemetry);
 

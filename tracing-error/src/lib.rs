@@ -70,9 +70,10 @@
 //! }
 //! ```
 //!
-//! This crate also provides the [`InstrumentResult`] and [`InstrumentError`]
-//! traits, which can be used to wrap errors with a [`TracedError`] which
-//! bundles the inner error with a [`SpanTrace`].
+//! This crate also provides [`TracedError`], for attaching a [`SpanTrace`] to
+//! an existing error. The easiest way to wrap errors in `TracedError` is to
+//! either use the [`InstrumentResult`] and [`InstrumentError`] traits or the
+//! `From`/`Into` traits.
 //!
 //! ```rust
 //! # use std::error::Error;
@@ -169,6 +170,10 @@
 //! [`std::error::Error`]: https://doc.rust-lang.org/stable/std/error/trait.Error.html
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc(html_root_url = "https://docs.rs/tracing-error/0.1.2")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo.svg",
+    issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
+)]
 #![warn(
     missing_debug_implementations,
     missing_docs,

@@ -215,7 +215,7 @@ impl std::io::Write for NonBlocking {
         let buf_size = buf.len();
         if self.is_lossy {
             if self.channel.try_send(Msg::Line(buf.to_vec())).is_err() {
-                self.error_counter.fetch_add(1, Ordering::Relaxed);
+                self.error_counter.fetch_add(1, Ordering::Release);
             }
         } else {
             return match self.channel.send(Msg::Line(buf.to_vec())) {
@@ -265,5 +265,156 @@ impl Drop for WorkerGuard {
                 e
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    struct MockWriter {
+        tx: mpsc::SyncSender<String>,
+    }
+
+    impl MockWriter {
+        fn new(capacity: usize) -> (Self, mpsc::Receiver<String>) {
+            let (tx, rx) = mpsc::sync_channel(capacity);
+            (Self { tx }, rx)
+        }
+    }
+
+    impl std::io::Write for MockWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let buf_len = buf.len();
+            let _ = self.tx.send(String::from_utf8_lossy(buf).to_string());
+            Ok(buf_len)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn backpressure_exerted() {
+        let (mock_writer, rx) = MockWriter::new(1);
+
+        let (mut non_blocking, _guard) = self::NonBlockingBuilder::default()
+            .lossy(false)
+            .buffered_lines_limit(1)
+            .finish(mock_writer);
+
+        let error_count = non_blocking.error_counter();
+
+        non_blocking.write_all(b"Hello").expect("Failed to write");
+        assert_eq!(0, error_count.load(Ordering::Acquire));
+
+        let handle = thread::spawn(move || {
+            non_blocking.write_all(b", World").expect("Failed to write");
+        });
+
+        // Sleep a little to ensure previously spawned thread gets blocked on write.
+        thread::sleep(Duration::from_millis(100));
+        // We should not drop logs when blocked.
+        assert_eq!(0, error_count.load(Ordering::Acquire));
+
+        // Read the first message to unblock sender.
+        let mut line = rx.recv().unwrap();
+        assert_eq!(line, "Hello");
+
+        // Wait for thread to finish.
+        handle.join().expect("thread should not panic");
+
+        // Thread has joined, we should be able to read the message it sent.
+        line = rx.recv().unwrap();
+        assert_eq!(line, ", World");
+    }
+
+    fn write_non_blocking(non_blocking: &mut NonBlocking, msg: &[u8]) {
+        non_blocking.write_all(msg).expect("Failed to write");
+
+        // Sleep a bit to prevent races.
+        thread::sleep(Duration::from_millis(200));
+    }
+
+    #[test]
+    #[ignore] // flaky, see https://github.com/tokio-rs/tracing/issues/751
+    fn logs_dropped_if_lossy() {
+        let (mock_writer, rx) = MockWriter::new(1);
+
+        let (mut non_blocking, _guard) = self::NonBlockingBuilder::default()
+            .lossy(true)
+            .buffered_lines_limit(1)
+            .finish(mock_writer);
+
+        let error_count = non_blocking.error_counter();
+
+        // First write will not block
+        write_non_blocking(&mut non_blocking, b"Hello");
+        assert_eq!(0, error_count.load(Ordering::Acquire));
+
+        // Second write will not block as Worker will have called `recv` on channel.
+        // "Hello" is not yet consumed. MockWriter call to write_all will block until
+        // "Hello" is consumed.
+        write_non_blocking(&mut non_blocking, b", World");
+        assert_eq!(0, error_count.load(Ordering::Acquire));
+
+        // Will sit in NonBlocking channel's buffer.
+        write_non_blocking(&mut non_blocking, b"Test");
+        assert_eq!(0, error_count.load(Ordering::Acquire));
+
+        // Allow a line to be written. "Hello" message will be consumed.
+        // ", World" will be able to write to MockWriter.
+        // "Test" will block on call to MockWriter's `write_all`
+        let line = rx.recv().unwrap();
+        assert_eq!(line, "Hello");
+
+        // This will block as NonBlocking channel is full.
+        write_non_blocking(&mut non_blocking, b"Universe");
+        assert_eq!(1, error_count.load(Ordering::Acquire));
+
+        // Finally the second message sent will be consumed.
+        let line = rx.recv().unwrap();
+        assert_eq!(line, ", World");
+        assert_eq!(1, error_count.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn multi_threaded_writes() {
+        let (mock_writer, rx) = MockWriter::new(DEFAULT_BUFFERED_LINES_LIMIT);
+
+        let (non_blocking, _guard) = self::NonBlockingBuilder::default()
+            .lossy(true)
+            .finish(mock_writer);
+
+        let error_count = non_blocking.error_counter();
+        let mut join_handles: Vec<JoinHandle<()>> = Vec::with_capacity(10);
+
+        for _ in 0..10 {
+            let cloned_non_blocking = non_blocking.clone();
+            join_handles.push(thread::spawn(move || {
+                let subscriber = tracing_subscriber::fmt().with_writer(cloned_non_blocking);
+                tracing::subscriber::with_default(subscriber.finish(), || {
+                    tracing::event!(tracing::Level::INFO, "Hello");
+                });
+            }));
+        }
+
+        for handle in join_handles {
+            handle.join().expect("Failed to join thread");
+        }
+
+        let mut hello_count: u8 = 0;
+
+        while let Ok(event_str) = rx.recv_timeout(Duration::from_secs(5)) {
+            assert!(event_str.contains("Hello"));
+            hello_count += 1;
+        }
+
+        assert_eq!(10, hello_count);
+        assert_eq!(0, error_count.load(Ordering::Acquire));
     }
 }

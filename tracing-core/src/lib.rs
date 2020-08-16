@@ -49,7 +49,7 @@
 //!
 //!   ```toml
 //!   [dependencies]
-//!   tracing-core = { version = "0.1.10", default-features = false }
+//!   tracing-core = { version = "0.1.14", default-features = false }
 //!   ```
 //!
 //!   *Compiler support: requires rustc 1.39+*
@@ -68,7 +68,11 @@
 //! [`Dispatch`]: dispatcher/struct.Dispatch.html
 //! [`tokio-rs/tracing`]: https://github.com/tokio-rs/tracing
 //! [`tracing`]: https://crates.io/crates/tracing
-#![doc(html_root_url = "https://docs.rs/tracing-core/0.1.10")]
+#![doc(html_root_url = "https://docs.rs/tracing-core/0.1.14")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo.svg",
+    issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
+)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(
@@ -177,7 +181,7 @@ macro_rules! metadata {
         callsite: $callsite:expr,
         kind: $kind:expr
     ) => {
-        metadata! {
+        $crate::metadata! {
             name: $name,
             target: $target,
             level: $level,
@@ -226,7 +230,10 @@ pub(crate) mod spin;
 
 #[cfg(not(feature = "std"))]
 #[doc(hidden)]
-pub use self::spin::Once;
+pub type Once = self::spin::Once<()>;
+
+#[cfg(feature = "std")]
+pub use stdlib::sync::Once;
 
 pub mod callsite;
 pub mod dispatcher;
@@ -244,7 +251,7 @@ pub use self::{
     dispatcher::Dispatch,
     event::Event,
     field::Field,
-    metadata::{Level, Metadata},
+    metadata::{Level, LevelFilter, Metadata},
     subscriber::Subscriber,
 };
 

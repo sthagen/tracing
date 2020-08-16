@@ -1,3 +1,7 @@
+![Tracing — Structured, application-level diagnostics][splash]
+
+[splash]: https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/splash.svg
+
 # tracing
 
 Application-level tracing for Rust.
@@ -12,9 +16,9 @@ Application-level tracing for Rust.
 [Documentation][docs-url] | [Chat][discord-url]
 
 [crates-badge]: https://img.shields.io/crates/v/tracing.svg
-[crates-url]: https://crates.io/crates/tracing/0.1.13
+[crates-url]: https://crates.io/crates/tracing/0.1.19
 [docs-badge]: https://docs.rs/tracing/badge.svg
-[docs-url]: https://docs.rs/tracing/0.1.13
+[docs-url]: https://docs.rs/tracing/0.1.19
 [docs-master-badge]: https://img.shields.io/badge/docs-master-blue
 [docs-master-url]: https://tracing-rs.netlify.com/tracing
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
@@ -76,7 +80,7 @@ fn main() {
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)
-        .expect("setting defualt subscriber failed");
+        .expect("setting default subscriber failed");
 
     let number_of_yaks = 3;
     // this creates a new event, outside of any spans.
@@ -241,7 +245,7 @@ my_future
 is as long as the future's.
 
 The second, and preferred, option is through the
-[`#[instrument]`](https://docs.rs/tracing/0.1.13/tracing/attr.instrument.html)
+[`#[instrument]`](https://docs.rs/tracing/0.1.19/tracing/attr.instrument.html)
 attribute:
 
 ```rust
@@ -259,8 +263,6 @@ async fn write(stream: &mut TcpStream) -> io::Result<usize> {
 
 Under the hood, the `#[instrument]` macro performs same the explicit span
 attachment that `Future::instrument` does.
-
-Note: the [`#[tracing::instrument]`](https://github.com/tokio-rs/tracing/issues/399)` macro does work correctly with the [async-trait](https://github.com/dtolnay/async-trait) crate. This bug is tracked in [#399](https://github.com/tokio-rs/tracing/issues/399).
 
 ### Concepts
 
@@ -290,7 +292,7 @@ span.in_scope(|| {
 // Dropping the span will close it, indicating that it has ended.
 ```
 
-The [`#[instrument]`](https://docs.rs/tracing/0.1.13/tracing/attr.instrument.html) attribute macro
+The [`#[instrument]`](https://docs.rs/tracing/0.1.19/tracing/attr.instrument.html) attribute macro
 can reduce some of this boilerplate:
 
 ```rust
@@ -354,8 +356,8 @@ maintained by the `tokio` project. These include:
   `tracing` events and generates histograms.
 - [`tracing-opentelemetry`] provides a subscriber for emitting traces to
   [OpenTelemetry]-compatible distributed tracing systems.
-- [`tracing-honeycomb`] implements a subscriber for reporting traces to
-  [honeycomb.io].
+- [`tracing-honeycomb`] Provides a layer that reports traces spanning multiple machines to [honeycomb.io]. Backed by [`tracing-distributed`].
+- [`tracing-distributed`] Provides a generic implementation of a layer that reports traces spanning multiple machines to some backend.
 - [`tracing-actix`] provides `tracing` integration for the `actix` actor
   framework.
 - [`tracing-gelf`] implements a subscriber for exporting traces in Greylog
@@ -369,7 +371,8 @@ please let us know! We'd love to add your project to the list!
 [`tracing-timing`]: https://crates.io/crates/tracing-timing
 [`tracing-opentelemetry`]: https://crates.io/crates/tracing-opentelemetry
 [OpenTelemetry]: https://opentelemetry.io/
-[`tracing-honeycomb`]: https://crates.io/crates/honeycomb-tracing
+[`tracing-honeycomb`]: https://crates.io/crates/tracing-honeycomb
+[`tracing-distributed`]: https://crates.io/crates/tracing-distributed
 [honeycomb.io]: https://www.honeycomb.io/
 [`tracing-actix`]: https://crates.io/crates/tracing-actix
 [`tracing-gelf`]: https://crates.io/crates/tracing-gelf

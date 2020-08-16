@@ -1,3 +1,7 @@
+![Tracing — Structured, application-level diagnostics][splash]
+
+[splash]: https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/splash.svg
+
 # tracing-log
 
 [`log`] compatibility for [`tracing`].
