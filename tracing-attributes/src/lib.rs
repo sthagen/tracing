@@ -6,16 +6,18 @@
 //!
 //! Note that this macro is also re-exported by the main `tracing` crate.
 //!
+//! *Compiler support: [requires `rustc` 1.40+][msrv]*
+//!
+//! [msrv]: #supported-rust-versions
+//!
 //! ## Usage
 //!
 //! First, add this to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
-//! tracing-attributes = "0.1.10"
+//! tracing-attributes = "0.1.11"
 //! ```
-//!
-//! *Compiler support: requires rustc 1.39+*
 //!
 //! The [`#[instrument]`][instrument] attribute can now be added to a function
 //! to automatically create and enter `tracing` [span] when that function is
@@ -35,9 +37,24 @@
 //! [`tracing`]: https://crates.io/crates/tracing
 //! [span]: https://docs.rs/tracing/latest/tracing/span/index.html
 //! [instrument]: attr.instrument.html
-#![doc(html_root_url = "https://docs.rs/tracing-attributes/0.1.10")]
+//!
+//! ## Supported Rust Versions
+//!
+//! Tracing is built against the latest stable release. The minimum supported
+//! version is 1.40. The current Tracing version is not guaranteed to build on
+//! Rust versions earlier than the minimum supported version.
+//!
+//! Tracing follows the same compiler support policies as the rest of the Tokio
+//! project. The current stable Rust compiler and the three most recent minor
+//! versions before it will always be supported. For example, if the current
+//! stable compiler version is 1.45, the minimum supported version will not be
+//! increased past 1.42, three minor versions prior. Increasing the minimum
+//! supported compiler version is not considered a semver breaking change as
+//! long as doing so complies with this policy.
+//!
+#![doc(html_root_url = "https://docs.rs/tracing-attributes/0.1.11")]
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo.svg",
+    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
 #![warn(
@@ -82,6 +99,7 @@ use syn::{
 /// Instruments a function to create and enter a `tracing` [span] every time
 /// the function is called.
 ///
+/// Unless overriden, a span with `info` level will be generated.
 /// The generated span's name will be the name of the function. Any arguments
 /// to that function will be recorded as fields using [`fmt::Debug`]. To skip
 /// recording a function's or method's argument, pass the argument's name
@@ -231,7 +249,6 @@ use syn::{
 /// ```
 /// Instead, you should manually rewrite any `Self` types as the type for
 /// which you implement the trait: `#[instrument(fields(tmp = std::any::type_name::<Bar>()))]`.
-
 ///
 /// [span]: https://docs.rs/tracing/latest/tracing/span/index.html
 /// [`tracing`]: https://github.com/tokio-rs/tracing
@@ -929,8 +946,11 @@ fn get_async_trait_info(block: &Block, block_is_async: bool) -> Option<AsyncTrai
 
             None
         })
-        .next()
-        .flatten();
+        .next();
+    let self_type = match self_type {
+        Some(x) => x,
+        None => None,
+    };
 
     Some(AsyncTraitInfo {
         name: fun.sig.ident.to_string(),

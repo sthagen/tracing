@@ -19,6 +19,9 @@
 //! The `tracing` crate provides the APIs necessary for instrumenting libraries
 //! and applications to emit trace data.
 //!
+//! *Compiler support: [requires `rustc` 1.40+][msrv]*
+//!
+//! [msrv]: #supported-rust-versions
 //! # Core Concepts
 //!
 //! The core of `tracing`'s API is composed of _spans_, _events_ and
@@ -63,7 +66,7 @@
 //!
 //! An [`Event`] represents a _moment_ in time. It signifies something that
 //! happened while a trace was being recorded. `Event`s are comparable to the log
-//! records emitted by unstructured logging code, but unlike a typical log line,``s
+//! records emitted by unstructured logging code, but unlike a typical log line,
 //! an `Event` may occur within the context of a span.
 //!
 //! For example:
@@ -721,6 +724,13 @@
 //!  - [`tracing-wasm`] provides a `Subscriber`/`Layer` implementation that reports
 //!    events and spans via browser `console.log` and [User Timing API (`window.performance`)].
 //!  - [`tide-tracing`] provides a [tide] middleware to trace all incoming requests and responses.
+//!  - [`test-env-log`] takes care of initializing `tracing` for tests, based on
+//!    environment variables with an `env_logger` compatible syntax.
+//!  - [`tracing-unwrap`] provides convenience methods to report failed unwraps
+//!    on `Result` or `Option` types to a `Subscriber`.
+//!  - [`diesel-tracing`] provides integration with [`diesel`] database connections.
+//!  - [`tracing-tracy`] provides a way to collect [Tracy] profiles in instrumented
+//!    applications.
 //!
 //! If you're the maintainer of a `tracing` ecosystem crate not listed above,
 //! please let us know! We'd love to add your project to the list!
@@ -740,6 +750,12 @@
 //! [User Timing API (`window.performance`)]: https://developer.mozilla.org/en-US/docs/Web/API/User_Timing_API
 //! [`tide-tracing`]: https://crates.io/crates/tide-tracing
 //! [tide]: https://crates.io/crates/tide
+//! [`test-env-log`]: https://crates.io/crates/test-env-log
+//! [`tracing-unwrap`]: https://docs.rs/tracing-unwrap
+//! [`diesel`]: https://crates.io/crates/diesel
+//! [`diesel-tracing`]: https://crates.io/crates/diesel-tracing
+//! [`tracing-tracy`]: https://crates.io/crates/tracing-tracy
+//! [Tracy]: https://github.com/wolfpld/tracy
 //!
 //! <div class="information">
 //!     <div class="tooltip ignore" style="">ⓘ<span class="tooltiptext">Note</span></div>
@@ -774,10 +790,8 @@
 //!
 //!   ```toml
 //!   [dependencies]
-//!   tracing = { version = "0.1.19", default-features = false }
+//!   tracing = { version = "0.1.20", default-features = false }
 //!   ```
-//!
-//!   *Compiler support: requires rustc 1.39+*
 //!
 //! <div class="information">
 //!     <div class="tooltip ignore" style="">ⓘ<span class="tooltiptext">Note</span></div>
@@ -787,6 +801,20 @@
 //! <strong>Note</strong>: <code>tracing</code>'s <code>no_std</code> support
 //! requires <code>liballoc</code>.
 //! </pre></div>
+//!
+//! ## Supported Rust Versions
+//!
+//! Tracing is built against the latest stable release. The minimum supported
+//! version is 1.40. The current Tracing version is not guaranteed to build on
+//! Rust versions earlier than the minimum supported version.
+//!
+//! Tracing follows the same compiler support policies as the rest of the Tokio
+//! project. The current stable Rust compiler and the three most recent minor
+//! versions before it will always be supported. For example, if the current
+//! stable compiler version is 1.45, the minimum supported version will not be
+//! increased past 1.42, three minor versions prior. Increasing the minimum
+//! supported compiler version is not considered a semver breaking change as
+//! long as doing so complies with this policy.
 //!
 //! [`log`]: https://docs.rs/log/0.4.6/log/
 //! [span]: span/index.html
@@ -817,9 +845,9 @@
 //! [flags]: #crate-feature-flags
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(html_root_url = "https://docs.rs/tracing/0.1.19")]
+#![doc(html_root_url = "https://docs.rs/tracing/0.1.20")]
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo.svg",
+    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
 #![warn(
@@ -892,9 +920,9 @@ pub mod subscriber;
 
 #[doc(hidden)]
 pub mod __macro_support {
-    pub use crate::callsite::Callsite as _;
+    pub use crate::callsite::Callsite;
     use crate::stdlib::sync::atomic::{AtomicUsize, Ordering};
-    use crate::{subscriber::Interest, Callsite, Metadata};
+    use crate::{subscriber::Interest, Metadata};
     use tracing_core::Once;
 
     /// Callsite implementation used by macro-generated code.
@@ -923,33 +951,10 @@ pub mod __macro_support {
         /// without warning.
         pub const fn new(meta: &'static Metadata<'static>) -> Self {
             Self {
-                interest: AtomicUsize::new(0),
+                interest: AtomicUsize::new(0xDEADFACED),
                 meta,
                 registration: Once::new(),
             }
-        }
-
-        /// Returns `true` if the callsite is enabled by a cached interest, or
-        /// by the current `Dispatch`'s `enabled` method if the cached
-        /// `Interest` is `sometimes`.
-        ///
-        /// /!\ WARNING: This is *not* a stable API! /!\
-        /// This method, and all code contained in the `__macro_support` module, is
-        /// a *private* API of `tracing`. It is exposed publicly because it is used
-        /// by the `tracing` macros, but it is not part of the stable versioned API.
-        /// Breaking changes to this module may occur in small-numbered versions
-        /// without warning.
-        #[inline(always)]
-        pub fn is_enabled(&self) -> bool {
-            let interest = self.interest();
-            if interest.is_always() {
-                return true;
-            }
-            if interest.is_never() {
-                return false;
-            }
-
-            crate::dispatcher::get_default(|current| current.enabled(self.meta))
         }
 
         /// Registers this callsite with the global callsite registry.
@@ -962,19 +967,74 @@ pub mod __macro_support {
         /// by the `tracing` macros, but it is not part of the stable versioned API.
         /// Breaking changes to this module may occur in small-numbered versions
         /// without warning.
-        #[inline(always)]
-        pub fn register(&'static self) {
+        #[inline(never)]
+        // This only happens once (or if the cached interest value was corrupted).
+        #[cold]
+        pub fn register(&'static self) -> Interest {
             self.registration
                 .call_once(|| crate::callsite::register(self));
-        }
-
-        #[inline(always)]
-        fn interest(&self) -> Interest {
             match self.interest.load(Ordering::Relaxed) {
                 0 => Interest::never(),
                 2 => Interest::always(),
                 _ => Interest::sometimes(),
             }
+        }
+
+        /// Returns the callsite's cached Interest, or registers it for the
+        /// first time if it has not yet been registered.
+        ///
+        /// /!\ WARNING: This is *not* a stable API! /!\
+        /// This method, and all code contained in the `__macro_support` module, is
+        /// a *private* API of `tracing`. It is exposed publicly because it is used
+        /// by the `tracing` macros, but it is not part of the stable versioned API.
+        /// Breaking changes to this module may occur in small-numbered versions
+        /// without warning.
+        #[inline]
+        pub fn interest(&'static self) -> Interest {
+            match self.interest.load(Ordering::Relaxed) {
+                0 => Interest::never(),
+                1 => Interest::sometimes(),
+                2 => Interest::always(),
+                _ => self.register(),
+            }
+        }
+
+        pub fn dispatch_event(&'static self, interest: Interest, f: impl FnOnce(&crate::Dispatch)) {
+            tracing_core::dispatcher::get_current(|current| {
+                if interest.is_always() || current.enabled(self.meta) {
+                    f(current)
+                }
+            });
+        }
+
+        #[inline]
+        #[cfg(feature = "log")]
+        pub fn disabled_span(&self) -> crate::Span {
+            crate::Span::new_disabled(self.meta)
+        }
+
+        #[inline]
+        #[cfg(not(feature = "log"))]
+        pub fn disabled_span(&self) -> crate::Span {
+            crate::Span::none()
+        }
+
+        pub fn dispatch_span(
+            &'static self,
+            interest: Interest,
+            f: impl FnOnce(&crate::Dispatch) -> crate::Span,
+        ) -> crate::Span {
+            if interest.is_never() {
+                return self.disabled_span();
+            }
+
+            tracing_core::dispatcher::get_current(|current| {
+                if interest.is_always() || current.enabled(self.meta) {
+                    return f(current);
+                }
+                self.disabled_span()
+            })
+            .unwrap_or_else(|| self.disabled_span())
         }
     }
 
