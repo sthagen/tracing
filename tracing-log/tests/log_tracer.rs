@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
-use tracing::subscriber::with_default;
+use tracing::collect::with_default;
 use tracing_core::span::{Attributes, Record};
-use tracing_core::{span, Event, Level, Metadata, Subscriber};
+use tracing_core::{span, Collect, Event, Level, Metadata};
 use tracing_log::{LogTracer, NormalizeEvent};
 
 struct State {
@@ -20,7 +20,7 @@ struct OwnedMetadata {
 
 struct TestSubscriber(Arc<State>);
 
-impl Subscriber for TestSubscriber {
+impl Collect for TestSubscriber {
     fn enabled(&self, _: &Metadata<'_>) -> bool {
         true
     }
@@ -39,7 +39,7 @@ impl Subscriber for TestSubscriber {
             event.normalized_metadata().map(|normalized| OwnedMetadata {
                 name: normalized.name().to_string(),
                 target: normalized.target().to_string(),
-                level: normalized.level().clone(),
+                level: *normalized.level(),
                 module_path: normalized.module_path().map(String::from),
                 file: normalized.file().map(String::from),
                 line: normalized.line(),

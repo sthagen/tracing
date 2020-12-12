@@ -16,7 +16,7 @@
 //! - An [`env_logger`] module, with helpers for using the [`env_logger` crate]
 //!   with `tracing` (optional, enabled by the `env-logger` feature).
 //!
-//! *Compiler support: [requires `rustc` 1.40+][msrv]*
+//! *Compiler support: [requires `rustc` 1.42+][msrv]*
 //!
 //! [msrv]: #supported-rust-versions
 //!
@@ -58,9 +58,9 @@
 //! ## Caution: Mixing both conversions
 //!
 //! Note that logger implementations that convert log records to trace events
-//! should not be used with `Subscriber`s that convert trace events _back_ into
+//! should not be used with `Collector`s that convert trace events _back_ into
 //! log records (such as the `TraceLogger`), as doing so will result in the
-//! event recursing between the subscriber and the logger forever (or, in real
+//! event recursing between the collector and the logger forever (or, in real
 //! life, probably overflowing the call stack).
 //!
 //! If the logging of trace events generated from log records produced by the
@@ -69,8 +69,6 @@
 //! required to avoid infinitely converting between `Event` and `log::Record`.
 //!
 //! # Feature Flags
-//! * `trace-logger`: enables an experimental `log` subscriber, deprecated since
-//!   version 0.1.1.
 //! * `log-tracer`: enables the `LogTracer` type (on by default)
 //! * `env_logger`: enables the `env_logger` module, with helpers for working
 //!   with the [`env_logger` crate].
@@ -78,7 +76,7 @@
 //! ## Supported Rust Versions
 //!
 //! Tracing is built against the latest stable release. The minimum supported
-//! version is 1.40. The current Tracing version is not guaranteed to build on
+//! version is 1.42. The current Tracing version is not guaranteed to build on
 //! Rust versions earlier than the minimum supported version.
 //!
 //! Tracing follows the same compiler support policies as the rest of the Tokio
@@ -89,25 +87,19 @@
 //! supported compiler version is not considered a semver breaking change as
 //! long as doing so complies with this policy.
 //!
-//! [`init`]: struct.LogTracer.html#method.init
-//! [`init_with_filter`]: struct.LogTracer.html#method.init_with_filter
-//! [`AsTrace`]: trait.AsTrace.html
-//! [`AsLog`]: trait.AsLog.html
-//! [`LogTracer`]: struct.LogTracer.html
-//! [`TraceLogger`]: struct.TraceLogger.html
-//! [`env_logger`]: env_logger/index.html
+//! [`init`]: LogTracer::init()
+//! [`init_with_filter`]: LogTracer::init_with_filter()
 //! [`tracing`]: https://crates.io/crates/tracing
 //! [`log`]: https://crates.io/crates/log
 //! [`env_logger` crate]: https://crates.io/crates/env-logger
-//! [`log::Log`]: https://docs.rs/log/latest/log/trait.Log.html
-//! [`log::Record`]: https://docs.rs/log/latest/log/struct.Record.html
-//! [`tracing::Subscriber`]: https://docs.rs/tracing/latest/tracing/trait.Subscriber.html
-//! [`Subscriber`]: https://docs.rs/tracing/latest/tracing/trait.Subscriber.html
-//! [`tracing::Event`]: https://docs.rs/tracing/latest/tracing/struct.Event.html
+//! [`tracing::Collector`]: tracing::Collect
+//! [`tracing::Event`]: tracing_core::Event
+//! [`Collect`]: tracing::Collect
 //! [flags]: https://docs.rs/tracing/latest/tracing/#crate-feature-flags
 #![doc(html_root_url = "https://docs.rs/tracing-log/0.1.1")]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
+    html_favicon_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/favicon.ico",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -139,35 +131,21 @@ use std::{fmt, io};
 
 use tracing_core::{
     callsite::{self, Callsite},
-    dispatcher,
+    collect, dispatch,
     field::{self, Field, Visit},
     identify_callsite,
     metadata::{Kind, Level},
-    subscriber, Event, Metadata,
+    Event, Metadata,
 };
 
 #[cfg(feature = "log-tracer")]
 #[cfg_attr(docsrs, doc(cfg(feature = "log-tracer")))]
 pub mod log_tracer;
 
-#[cfg(feature = "trace-logger")]
-#[cfg_attr(docsrs, doc(cfg(feature = "trace-logger")))]
-pub mod trace_logger;
-
 #[cfg(feature = "log-tracer")]
 #[cfg_attr(docsrs, doc(cfg(feature = "log-tracer")))]
 #[doc(inline)]
 pub use self::log_tracer::LogTracer;
-
-#[cfg(feature = "trace-logger")]
-#[cfg_attr(docsrs, doc(cfg(feature = "trace-logger")))]
-#[deprecated(
-    since = "0.1.1",
-    note = "use the `tracing` crate's \"log\" feature flag instead"
-)]
-#[allow(deprecated)]
-#[doc(inline)]
-pub use self::trace_logger::TraceLogger;
 
 #[cfg(feature = "env_logger")]
 #[cfg_attr(docsrs, doc(cfg(feature = "env_logger")))]
@@ -178,7 +156,7 @@ pub use log;
 /// Format a log record as a trace event in the current span.
 pub fn format_trace(record: &log::Record<'_>) -> io::Result<()> {
     let filter_meta = record.as_trace();
-    if !dispatcher::get_default(|dispatch| dispatch.enabled(&filter_meta)) {
+    if !dispatch::get_default(|dispatch| dispatch.enabled(&filter_meta)) {
         return Ok(());
     };
 
@@ -286,7 +264,7 @@ macro_rules! log_cs {
         );
 
         impl callsite::Callsite for Callsite {
-            fn set_interest(&self, _: subscriber::Interest) {}
+            fn set_interest(&self, _: collect::Interest) {}
             fn metadata(&self) -> &'static Metadata<'static> {
                 &META
             }
@@ -310,8 +288,8 @@ lazy_static! {
     static ref ERROR_FIELDS: Fields = Fields::new(ERROR_CS);
 }
 
-fn level_to_cs(level: &Level) -> (&'static dyn Callsite, &'static Fields) {
-    match *level {
+fn level_to_cs(level: Level) -> (&'static dyn Callsite, &'static Fields) {
+    match level {
         Level::TRACE => (TRACE_CS, &*TRACE_FIELDS),
         Level::DEBUG => (DEBUG_CS, &*DEBUG_FIELDS),
         Level::INFO => (INFO_CS, &*INFO_FIELDS),
@@ -391,13 +369,11 @@ impl AsTrace for log::Level {
 /// that only lives as long as its source `Event`, but provides complete
 /// data.
 ///
-/// It can typically be used by `Subscriber`s when processing an `Event`,
+/// It can typically be used by collectors when processing an `Event`,
 /// to allow accessing its complete metadata in a consistent way,
 /// regardless of the source of its source.
 ///
-/// [`normalized_metadata`]: trait.NormalizeEvent.html#normalized_metadata
-/// [`AsTrace`]: trait.AsTrace.html
-/// [`log::Record`]: https://docs.rs/log/0.4.7/log/struct.Record.html
+/// [`normalized_metadata`]: NormalizeEvent#normalized_metadata
 pub trait NormalizeEvent<'a>: crate::sealed::Sealed {
     /// If this `Event` comes from a `log`, this method provides a new
     /// normalized `Metadata` which has all available attributes
@@ -415,13 +391,13 @@ impl<'a> NormalizeEvent<'a> for Event<'a> {
     fn normalized_metadata(&'a self) -> Option<Metadata<'a>> {
         let original = self.metadata();
         if self.is_log() {
-            let mut fields = LogVisitor::new_for(self, level_to_cs(original.level()).1);
+            let mut fields = LogVisitor::new_for(self, level_to_cs(*original.level()).1);
             self.record(&mut fields);
 
             Some(Metadata::new(
                 "log event",
                 fields.target.unwrap_or("log"),
-                original.level().clone(),
+                *original.level(),
                 fields.file,
                 fields.line.map(|l| l as u32),
                 fields.module_path,
@@ -434,7 +410,7 @@ impl<'a> NormalizeEvent<'a> for Event<'a> {
     }
 
     fn is_log(&self) -> bool {
-        self.metadata().callsite() == identify_callsite!(level_to_cs(self.metadata().level()).0)
+        self.metadata().callsite() == identify_callsite!(level_to_cs(*self.metadata().level()).0)
     }
 }
 

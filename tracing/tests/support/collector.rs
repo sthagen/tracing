@@ -15,10 +15,10 @@ use std::{
     thread,
 };
 use tracing::{
+    collect::Interest,
     level_filters::LevelFilter,
     span::{self, Attributes, Id},
-    subscriber::Interest,
-    Event, Metadata, Subscriber,
+    Collect, Event, Metadata,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -48,7 +48,7 @@ struct Running<F: Fn(&Metadata<'_>) -> bool> {
     name: String,
 }
 
-pub struct MockSubscriber<F: Fn(&Metadata<'_>) -> bool> {
+pub struct MockCollector<F: Fn(&Metadata<'_>) -> bool> {
     expected: VecDeque<Expect>,
     max_level: Option<LevelFilter>,
     filter: F,
@@ -57,8 +57,8 @@ pub struct MockSubscriber<F: Fn(&Metadata<'_>) -> bool> {
 
 pub struct MockHandle(Arc<Mutex<VecDeque<Expect>>>, String);
 
-pub fn mock() -> MockSubscriber<fn(&Metadata<'_>) -> bool> {
-    MockSubscriber {
+pub fn mock() -> MockCollector<fn(&Metadata<'_>) -> bool> {
+    MockCollector {
         expected: VecDeque::new(),
         filter: (|_: &Metadata<'_>| true) as for<'r, 's> fn(&'r Metadata<'s>) -> _,
         max_level: None,
@@ -69,7 +69,7 @@ pub fn mock() -> MockSubscriber<fn(&Metadata<'_>) -> bool> {
     }
 }
 
-impl<F> MockSubscriber<F>
+impl<F> MockCollector<F>
 where
     F: Fn(&Metadata<'_>) -> bool + 'static,
 {
@@ -140,11 +140,11 @@ where
         self
     }
 
-    pub fn with_filter<G>(self, filter: G) -> MockSubscriber<G>
+    pub fn with_filter<G>(self, filter: G) -> MockCollector<G>
     where
         G: Fn(&Metadata<'_>) -> bool + 'static,
     {
-        MockSubscriber {
+        MockCollector {
             expected: self.expected,
             filter,
             max_level: self.max_level,
@@ -159,15 +159,15 @@ where
         }
     }
 
-    pub fn run(self) -> impl Subscriber {
-        let (subscriber, _) = self.run_with_handle();
-        subscriber
+    pub fn run(self) -> impl Collect {
+        let (collector, _) = self.run_with_handle();
+        collector
     }
 
-    pub fn run_with_handle(self) -> (impl Subscriber, MockHandle) {
+    pub fn run_with_handle(self) -> (impl Collect, MockHandle) {
         let expected = Arc::new(Mutex::new(self.expected));
         let handle = MockHandle(expected.clone(), self.name.clone());
-        let subscriber = Running {
+        let collector = Running {
             spans: Mutex::new(HashMap::new()),
             expected,
             current: Mutex::new(Vec::new()),
@@ -176,11 +176,11 @@ where
             max_level: self.max_level,
             name: self.name,
         };
-        (subscriber, handle)
+        (collector, handle)
     }
 }
 
-impl<F> Subscriber for Running<F>
+impl<F> Collect for Running<F>
 where
     F: Fn(&Metadata<'_>) -> bool + 'static,
 {
@@ -200,7 +200,7 @@ where
         }
     }
     fn max_level_hint(&self) -> Option<LevelFilter> {
-        self.max_level.clone()
+        self.max_level
     }
 
     fn record(&self, id: &Id, values: &span::Record<'_>) {
@@ -213,11 +213,7 @@ where
             "[{}] record: {}; id={:?}; values={:?};",
             self.name, span.name, id, values
         );
-        let was_expected = if let Some(Expect::Visit(_, _)) = expected.front() {
-            true
-        } else {
-            false
-        };
+        let was_expected = matches!(expected.front(), Some(Expect::Visit(_, _)));
         if was_expected {
             if let Expect::Visit(expected_span, mut expected_values) = expected.pop_front().unwrap()
             {
@@ -319,10 +315,7 @@ where
             id
         );
         let mut expected = self.expected.lock().unwrap();
-        let was_expected = match expected.front() {
-            Some(Expect::NewSpan(_)) => true,
-            _ => false,
-        };
+        let was_expected = matches!(expected.front(), Some(Expect::NewSpan(_)));
         let mut spans = self.spans.lock().unwrap();
         if was_expected {
             if let Expect::NewSpan(mut expected) = expected.pop_front().unwrap() {

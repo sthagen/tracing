@@ -6,7 +6,7 @@
 //!
 //! Note that this macro is also re-exported by the main `tracing` crate.
 //!
-//! *Compiler support: [requires `rustc` 1.40+][msrv]*
+//! *Compiler support: [requires `rustc` 1.42+][msrv]*
 //!
 //! [msrv]: #supported-rust-versions
 //!
@@ -35,13 +35,13 @@
 //! ```
 //!
 //! [`tracing`]: https://crates.io/crates/tracing
+//! [instrument]: macro@instrument
 //! [span]: https://docs.rs/tracing/latest/tracing/span/index.html
-//! [instrument]: attr.instrument.html
 //!
 //! ## Supported Rust Versions
 //!
 //! Tracing is built against the latest stable release. The minimum supported
-//! version is 1.40. The current Tracing version is not guaranteed to build on
+//! version is 1.42. The current Tracing version is not guaranteed to build on
 //! Rust versions earlier than the minimum supported version.
 //!
 //! Tracing follows the same compiler support policies as the rest of the Tokio
@@ -55,6 +55,7 @@
 #![doc(html_root_url = "https://docs.rs/tracing-attributes/0.1.11")]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
+    html_favicon_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/favicon.ico",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
 #![warn(
@@ -189,7 +190,6 @@ use syn::{
 /// }
 /// ```
 ///
-/// If `tracing_futures` is specified as a dependency in `Cargo.toml`,
 /// `async fn`s may also be instrumented:
 ///
 /// ```
@@ -252,7 +252,7 @@ use syn::{
 ///
 /// [span]: https://docs.rs/tracing/latest/tracing/span/index.html
 /// [`tracing`]: https://github.com/tokio-rs/tracing
-/// [`fmt::Debug`]: https://doc.rust-lang.org/std/fmt/trait.Debug.html
+/// [`fmt::Debug`]: std::fmt::Debug
 #[proc_macro_attribute]
 pub fn instrument(
     args: proc_macro::TokenStream,
@@ -285,11 +285,12 @@ pub fn instrument(
             }
         }
 
+        let vis = &input.vis;
         let sig = &input.sig;
         let attrs = &input.attrs;
         quote!(
             #(#attrs) *
-            #sig {
+            #vis #sig {
                 #(#stmts) *
             }
         )
@@ -443,7 +444,7 @@ fn gen_body(
         if err {
             quote_spanned! {block.span()=>
                 let __tracing_attr_span = #span;
-                tracing_futures::Instrument::instrument(async move {
+                tracing::Instrument::instrument(async move {
                     match async move { #block }.await {
                         Ok(x) => Ok(x),
                         Err(e) => {
@@ -456,7 +457,7 @@ fn gen_body(
         } else {
             quote_spanned!(block.span()=>
                 let __tracing_attr_span = #span;
-                    tracing_futures::Instrument::instrument(
+                    tracing::Instrument::instrument(
                         async move { #block },
                         __tracing_attr_span
                     )
@@ -467,7 +468,8 @@ fn gen_body(
         quote_spanned!(block.span()=>
             let __tracing_attr_span = #span;
             let __tracing_attr_guard = __tracing_attr_span.enter();
-            match { #block } {
+            let f = move || #return_type { #block };
+            match f() {
                 Ok(x) => Ok(x),
                 Err(e) => {
                     tracing::error!(error = %e);
